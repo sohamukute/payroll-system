@@ -1,0 +1,8 @@
+target/
+out/
+*.class
+payslips/
+.idea/
+*.iml
+.DS_Store
+*.log
