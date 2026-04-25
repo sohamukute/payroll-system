@@ -142,9 +142,8 @@ class PayrollCalculationServiceTest {
 
     @Test
     void testIncomeTaxForHighSalary() {
-        Employee highSalaryEmp = new Employee("EMP003", "Alex", "Kumar", "alex@co.com",
-                new BigDecimal("150000"), "Executive");
-        BigDecimal tax = service.calculateIncomeTax(new BigDecimal("150000"));
+        // Annual income ₹15L → above ₹12L, 87A rebate does not apply, tax must be > 0
+        BigDecimal tax = service.calculateIncomeTax(new BigDecimal("1500000"));
         assertTrue(tax.compareTo(BigDecimal.ZERO) > 0);
     }
 

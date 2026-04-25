@@ -10,8 +10,19 @@ import java.time.format.DateTimeFormatter;
 
 public class PayslipGenerator {
 
-    private static final String SEPARATOR = "=" .repeat(60);
-    private static final String THIN_LINE = "-" .repeat(60);
+    private static final String SEPARATOR = repeat("=", 60);
+    private static final String THIN_LINE = repeat("-", 60);
+
+    private static final String[] ONES = {"", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+            "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
+            "Seventeen", "Eighteen", "Nineteen"};
+    private static final String[] TENS = {"", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"};
+
+    private static String repeat(String s, int n) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < n; i++) sb.append(s);
+        return sb.toString();
+    }
 
     public String generatePayslip(Employee employee, Salary salary) {
         StringBuilder sb = new StringBuilder();
@@ -108,36 +119,30 @@ public class PayslipGenerator {
     public String maskBankAccount(String accountNumber) {
         if (accountNumber == null || accountNumber.length() < 4) return "****";
         int len = accountNumber.length();
-        return "*" .repeat(len - 4) + accountNumber.substring(len - 4);
+        return repeat("*", len - 4) + accountNumber.substring(len - 4);
     }
 
     private String centerText(String text, int width) {
         int padding = (width - text.length()) / 2;
-        return " ".repeat(Math.max(0, padding)) + text;
+        return repeat(" ", Math.max(0, padding)) + text;
     }
 
     public String convertToWords(BigDecimal amount) {
         long rupees = amount.longValue();
         if (rupees == 0) return "Zero Rupees Only";
-
-        String[] ones = {"", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
-                "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
-                "Seventeen", "Eighteen", "Nineteen"};
-        String[] tens = {"", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"};
-
         if (rupees < 0) return "Negative " + convertToWords(amount.negate());
 
         String result = "";
         if (rupees >= 10000000) {
-            result += ones[(int) (rupees / 10000000)] + " Crore ";
+            result += convertChunk((int) (rupees / 10000000)) + "Crore ";
             rupees %= 10000000;
         }
         if (rupees >= 100000) {
-            result += convertChunk((int) (rupees / 100000)) + " Lakh ";
+            result += convertChunk((int) (rupees / 100000)) + "Lakh ";
             rupees %= 100000;
         }
         if (rupees >= 1000) {
-            result += convertChunk((int) (rupees / 1000)) + " Thousand ";
+            result += convertChunk((int) (rupees / 1000)) + "Thousand ";
             rupees %= 1000;
         }
         result += convertChunk((int) rupees);
@@ -146,14 +151,12 @@ public class PayslipGenerator {
     }
 
     private String convertChunk(int number) {
-        String[] ones = {"", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
-                "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
-                "Seventeen", "Eighteen", "Nineteen"};
-        String[] tens = {"", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"};
-
         if (number == 0) return "";
-        if (number < 20) return ones[number] + " ";
-        if (number < 100) return tens[number / 10] + " " + ones[number % 10] + " ";
-        return ones[number / 100] + " Hundred " + convertChunk(number % 100);
+        if (number < 20) return ONES[number] + " ";
+        if (number < 100) {
+            String o = ONES[number % 10];
+            return o.isEmpty() ? TENS[number / 10] + " " : TENS[number / 10] + " " + o + " ";
+        }
+        return ONES[number / 100] + " Hundred " + convertChunk(number % 100);
     }
 }

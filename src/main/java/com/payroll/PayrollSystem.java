@@ -12,15 +12,12 @@ import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
-import java.util.concurrent.atomic.AtomicInteger;
-
 public class PayrollSystem {
 
     private EmployeeRepository employeeRepository = new EmployeeRepository();
@@ -28,10 +25,16 @@ public class PayrollSystem {
     private PayrollCalculationService calculationService = new PayrollCalculationService();
     private PayslipGenerator payslipGenerator = new PayslipGenerator();
     private Map<String, List<Attendance>> attendanceStore = new HashMap<>();
-    private AtomicInteger attendanceIdCounter = new AtomicInteger(1);
+    private int attendanceIdCounter = 1;
     private Scanner scanner = new Scanner(System.in);
 
     private static final String PAYSLIP_DIR = "payslips";
+
+    private static String repeat(String s, int n) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < n; i++) sb.append(s);
+        return sb.toString();
+    }
 
     public static void main(String[] args) {
         PayrollSystem system = new PayrollSystem();
@@ -51,9 +54,9 @@ public class PayrollSystem {
     }
 
     public void run() {
-        System.out.println("=" .repeat(50));
+        System.out.println(repeat("=", 50));
         System.out.println("    PAYROLL MANAGEMENT SYSTEM v1.0");
-        System.out.println("=" .repeat(50));
+        System.out.println(repeat("=", 50));
 
         boolean running = true;
         while (running) {
@@ -74,6 +77,7 @@ public class PayrollSystem {
                 case "11": loadDemoData(); System.out.println("Demo data loaded."); break;
                 case "0":
                     System.out.println("Exiting. Goodbye!");
+                    scanner.close();
                     running = false;
                     break;
                 default:
@@ -83,9 +87,9 @@ public class PayrollSystem {
     }
 
     private void printMenu() {
-        System.out.println("\n" + "-" .repeat(40));
+        System.out.println("\n" + repeat("-", 40));
         System.out.println(" MAIN MENU");
-        System.out.println("-" .repeat(40));
+        System.out.println(repeat("-", 40));
         System.out.println(" 1. Add Employee");
         System.out.println(" 2. View Employee");
         System.out.println(" 3. List All Employees");
@@ -98,7 +102,7 @@ public class PayrollSystem {
         System.out.println("10. Search Employees");
         System.out.println("11. Load Demo Data");
         System.out.println(" 0. Exit");
-        System.out.println("-" .repeat(40));
+        System.out.println(repeat("-", 40));
         System.out.print("Enter choice: ");
     }
 
@@ -162,10 +166,10 @@ public class PayrollSystem {
             System.out.println("\nNo employees found.");
             return;
         }
-        System.out.println("\n" + "-" .repeat(90));
+        System.out.println("\n" + repeat("-", 90));
         System.out.printf("%-10s %-20s %-15s %-20s %15s %10s%n",
                 "ID", "Name", "Department", "Position", "Salary", "Status");
-        System.out.println("-" .repeat(90));
+        System.out.println(repeat("-", 90));
         for (Employee emp : employees) {
             System.out.printf("%-10s %-20s %-15s %-20s %15s %10s%n",
                     emp.getEmployeeId(),
@@ -175,7 +179,7 @@ public class PayrollSystem {
                     String.format("Rs.%,.2f", emp.getBaseSalary()),
                     emp.getStatus());
         }
-        System.out.println("-" .repeat(90));
+        System.out.println(repeat("-", 90));
         System.out.println("Total: " + employees.size() + " employees");
     }
 
@@ -202,8 +206,16 @@ public class PayrollSystem {
             return;
         }
 
+        List<Attendance> existing = getAttendanceForMonth(empId, YearMonth.from(date));
+        for (Attendance a : existing) {
+            if (a.getDate().equals(date)) {
+                System.out.println("Attendance already marked for " + date);
+                return;
+            }
+        }
+
         Attendance attendance = new Attendance(
-                "ATT" + attendanceIdCounter.getAndIncrement(), empId, date, status);
+                "ATT" + attendanceIdCounter++, empId, date, status);
         String key = empId + "_" + YearMonth.from(date);
         attendanceStore.computeIfAbsent(key, k -> new ArrayList<>()).add(attendance);
         System.out.println("Attendance marked for " + emp.getFullName() + " on " + date + " as " + status);
@@ -226,7 +238,7 @@ public class PayrollSystem {
             return;
         }
         System.out.println("\nAttendance for " + empId + " - " + month);
-        System.out.println("-" .repeat(35));
+        System.out.println(repeat("-", 35));
         int present = 0, absent = 0, leave = 0, half = 0;
         for (Attendance a : records) {
             System.out.printf("%s : %s%n", a.getDate(), a.getStatus());
@@ -235,7 +247,7 @@ public class PayrollSystem {
             else if (a.getStatus().equals("PAID_LEAVE")) leave++;
             else if (a.getStatus().equals("HALF_DAY")) half++;
         }
-        System.out.println("-" .repeat(35));
+        System.out.println(repeat("-", 35));
         System.out.printf("Present: %d | Absent: %d | Leave: %d | Half: %d%n",
                 present, absent, leave, half);
     }
@@ -259,6 +271,11 @@ public class PayrollSystem {
         List<Attendance> records = getAttendanceForMonth(empId, month);
         if (records.isEmpty()) {
             System.out.println("No attendance records for this month. Please mark attendance first.");
+            return;
+        }
+        Salary alreadyDone = salaryRepository.findByEmployeeAndMonth(empId, month);
+        if (alreadyDone != null) {
+            System.out.println("Salary already calculated. Net: Rs." + String.format("%,.2f", alreadyDone.getNetSalary()));
             return;
         }
         try {
@@ -316,14 +333,14 @@ public class PayrollSystem {
         }
 
         System.out.println("\nProcessing payroll for " + month + "...");
-        int success = 0, failed = 0;
+        int success = 0, skipped = 0, failed = 0;
         BigDecimal totalPayroll = BigDecimal.ZERO;
 
         for (Employee emp : employees) {
             List<Attendance> records = getAttendanceForMonth(emp.getEmployeeId(), month);
             if (records.isEmpty()) {
                 System.out.println("  SKIP: " + emp.getFullName() + " - no attendance records");
-                failed++;
+                skipped++;
                 continue;
             }
             try {
@@ -345,13 +362,14 @@ public class PayrollSystem {
             }
         }
 
-        System.out.println("\n" + "=" .repeat(50));
+        System.out.println("\n" + repeat("=", 50));
         System.out.println("PAYROLL SUMMARY - " + month);
-        System.out.println("=" .repeat(50));
+        System.out.println(repeat("=", 50));
         System.out.println("Processed: " + success);
+        System.out.println("Skipped:   " + skipped);
         System.out.println("Failed:    " + failed);
         System.out.printf("Total Payroll: Rs.%,.2f%n", totalPayroll);
-        System.out.println("=" .repeat(50));
+        System.out.println(repeat("=", 50));
     }
 
     private void viewPayrollReport() {
@@ -369,12 +387,12 @@ public class PayrollSystem {
             return;
         }
 
-        System.out.println("\n" + "=" .repeat(80));
+        System.out.println("\n" + repeat("=", 80));
         System.out.println("PAYROLL REPORT - " + month);
-        System.out.println("=" .repeat(80));
+        System.out.println(repeat("=", 80));
         System.out.printf("%-12s %-20s %15s %15s %15s%n",
                 "Emp ID", "Name", "Gross", "Deductions", "Net Pay");
-        System.out.println("-" .repeat(80));
+        System.out.println(repeat("-", 80));
 
         BigDecimal totalGross = BigDecimal.ZERO;
         BigDecimal totalDeductions = BigDecimal.ZERO;
@@ -393,13 +411,13 @@ public class PayrollSystem {
             totalNet = totalNet.add(s.getNetSalary());
         }
 
-        System.out.println("-" .repeat(80));
+        System.out.println(repeat("-", 80));
         System.out.printf("%-12s %-20s %15s %15s %15s%n",
                 "", "TOTAL",
                 String.format("Rs.%,.2f", totalGross),
                 String.format("Rs.%,.2f", totalDeductions),
                 String.format("Rs.%,.2f", totalNet));
-        System.out.println("=" .repeat(80));
+        System.out.println(repeat("=", 80));
         System.out.println("Employees processed: " + salaries.size());
     }
 
@@ -438,7 +456,7 @@ public class PayrollSystem {
             System.out.println("  Added: " + emp.getFullName() + " [" + emp.getEmployeeId() + "]");
         }
 
-        YearMonth month = YearMonth.of(2025, 4);
+        YearMonth month = YearMonth.now();
         int totalDays = month.lengthOfMonth();
 
         for (Employee emp : employees) {
@@ -457,26 +475,26 @@ public class PayrollSystem {
                 }
 
                 Attendance att = new Attendance(
-                        "ATT" + attendanceIdCounter.getAndIncrement(),
+                        "ATT" + attendanceIdCounter++,
                         emp.getEmployeeId(), date, status);
                 String key = emp.getEmployeeId() + "_" + month;
                 attendanceStore.computeIfAbsent(key, k -> new ArrayList<>()).add(att);
             }
         }
 
-        System.out.println("  Attendance marked for April 2025");
-        System.out.println("Demo data loaded! Use option 8 to process payroll for 2025-04");
+        System.out.println("  Attendance marked for " + month);
+        System.out.println("Demo data loaded! Use option 8 to process payroll for " + month);
     }
 
     private void runDemo() {
-        System.out.println("\n" + "=" .repeat(50));
+        System.out.println("\n" + repeat("=", 50));
         System.out.println("  DEMO MODE - Payroll Management System");
-        System.out.println("=" .repeat(50));
+        System.out.println(repeat("=", 50));
 
-        YearMonth month = YearMonth.of(2025, 4);
+        YearMonth month = YearMonth.now();
         List<Employee> employees = employeeRepository.getActiveEmployees();
 
-        System.out.println("\nProcessing payroll for April 2025...");
+        System.out.println("\nProcessing payroll for " + month + "...");
         BigDecimal totalPayroll = BigDecimal.ZERO;
 
         for (Employee emp : employees) {
@@ -489,10 +507,10 @@ public class PayrollSystem {
             System.out.printf("  %s -> Net: Rs.%,.2f%n", emp.getFullName(), salary.getNetSalary());
         }
 
-        System.out.println("\n" + "=" .repeat(50));
-        System.out.printf("  Total Payroll (April 2025): Rs.%,.2f%n", totalPayroll);
+        System.out.println("\n" + repeat("=", 50));
+        System.out.printf("  Total Payroll (April 2026): Rs.%,.2f%n", totalPayroll);    // runDemo always uses 2026
         System.out.println("  Payslips saved to ./payslips/");
-        System.out.println("=" .repeat(50));
+        System.out.println(repeat("=", 50));
     }
 
     private Employee createEmp(String first, String last, String email, String phone,
