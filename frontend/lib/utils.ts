@@ -23,6 +23,8 @@ export function getStatusColor(status: string): string {
     CALCULATED: 'bg-blue-100 text-blue-700',
     APPROVED: 'bg-indigo-100 text-indigo-700',
     PAID: 'bg-green-100 text-green-700',
+    PROCESSED: 'bg-blue-100 text-blue-700',
+    LOCKED: 'bg-slate-200 text-slate-700',
   };
   return map[status] ?? 'bg-gray-100 text-gray-600';
 }

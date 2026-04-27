@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("ADMIN")
+  createdAt DateTime @default(now())
+}
+
+model Employee {
+  id            String       @id @default(cuid())
+  firstName     String
+  lastName      String
+  email         String       @unique
+  phone         String
+  department    String
+  position      String
+  baseSalary    Float
+  bankAccount   String
+  ifscCode      String       @default("SBIN0000001")
+  dateOfJoining String
+  status        String       @default("ACTIVE")
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  attendance    Attendance[]
+  salaries      Salary[]
+  leaves        Leave[]
+}
+
+model Attendance {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date       String
+  status     String
+  createdAt  DateTime @default(now())
+
+  @@unique([employeeId, date])
+}
+
+model Salary {
+  id               String   @id @default(cuid())
+  employeeId       String
+  employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  month            String
+  basicSalary      Float
+  hra              Float
+  da               Float
+  specialAllowance Float
+  totalEarnings    Float
+  providentFund    Float
+  esi              Float
+  incomeTax        Float
+  professionalTax  Float
+  totalDeductions  Float
+  netSalary        Float
+  presentDays      Int
+  paidLeaveDays    Int
+  absentDays       Int
+  halfDays         Int      @default(0)
+  cycleStatus      String   @default("DRAFT")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([employeeId, month])
+}
+
+model Leave {
+  id         String    @id @default(cuid())
+  employeeId String
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType  String
+  startDate  String
+  endDate    String
+  days       Int
+  reason     String
+  status     String    @default("PENDING")
+  appliedAt  DateTime  @default(now())
+  reviewedBy String?
+  reviewedAt DateTime?
+}

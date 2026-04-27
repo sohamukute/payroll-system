@@ -8,6 +8,7 @@ export interface Employee {
   position: string;
   baseSalary: number;
   bankAccount: string;
+  ifscCode: string;
   dateOfJoining: string;
   status: 'ACTIVE' | 'INACTIVE';
 }
@@ -18,6 +19,8 @@ export interface Attendance {
   date: string;
   status: 'PRESENT' | 'ABSENT' | 'PAID_LEAVE' | 'HALF_DAY' | 'HOLIDAY';
 }
+
+export type CycleStatus = 'DRAFT' | 'PROCESSED' | 'PAID' | 'LOCKED';
 
 export interface Salary {
   id: string;
@@ -40,7 +43,12 @@ export interface Salary {
   absentDays: number;
   workingDays: number;
   status: 'DRAFT' | 'CALCULATED' | 'APPROVED' | 'PAID';
+  cycleStatus: CycleStatus;
   calculatedAt: string;
+}
+
+export interface SalaryWithEmployee extends Salary {
+  employee: Pick<Employee, 'firstName' | 'lastName' | 'department'>;
 }
 
 export interface PayrollSummary {
