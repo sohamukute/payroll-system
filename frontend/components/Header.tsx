@@ -1,7 +1,10 @@
 'use client';
-import { Bell, User } from 'lucide-react';
+import { Bell, User, LogOut } from 'lucide-react';
+import { useSession, signOut } from 'next-auth/react';
 
 export default function Header() {
+  const { data: session } = useSession();
+
   return (
     <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6">
       <div>
@@ -16,7 +19,16 @@ export default function Header() {
           <div className="w-7 h-7 bg-blue-600 rounded-full flex items-center justify-center">
             <User className="w-4 h-4 text-white" />
           </div>
-          <span className="text-sm font-medium text-slate-700">Admin</span>
+          <span className="text-sm font-medium text-slate-700">
+            {session?.user?.name ?? 'Admin'}
+          </span>
+          <button
+            onClick={() => signOut({ callbackUrl: '/login' })}
+            className="p-1.5 rounded-lg hover:bg-slate-50 text-slate-400 hover:text-slate-600 transition-colors"
+            title="Sign out"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </div>
     </header>
