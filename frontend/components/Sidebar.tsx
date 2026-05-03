@@ -3,16 +3,18 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, CalendarCheck,
-  IndianRupee, FileText, BarChart3
+  IndianRupee, FileText, BarChart3, CalendarOff, Upload
 } from 'lucide-react';
 
 const nav = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/employees', label: 'Employees', icon: Users },
   { href: '/attendance', label: 'Attendance', icon: CalendarCheck },
+  { href: '/leave', label: 'Leave', icon: CalendarOff },
   { href: '/salary', label: 'Salary', icon: IndianRupee },
   { href: '/payroll', label: 'Payroll', icon: FileText },
   { href: '/reports', label: 'Reports', icon: BarChart3 },
+  { href: '/import', label: 'Import', icon: Upload },
 ];
 
 export default function Sidebar() {
