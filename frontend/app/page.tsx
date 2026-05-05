@@ -2,7 +2,6 @@
 import { useEffect, useState } from 'react';
 import { Users, UserCheck, IndianRupee, ClipboardList } from 'lucide-react';
 import StatCard from '@/components/StatCard';
-import { getEmployees, getSalariesForMonth, seedDemoData } from '@/lib/store';
 import { Employee, Salary } from '@/lib/types';
 import { formatCurrency, getCurrentMonth } from '@/lib/utils';
 import Link from 'next/link';
@@ -10,12 +9,31 @@ import Link from 'next/link';
 export default function DashboardPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [salaries, setSalaries] = useState<Salary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const month = getCurrentMonth();
 
   useEffect(() => {
-    seedDemoData();
-    setEmployees(getEmployees());
-    setSalaries(getSalariesForMonth(month));
+    async function fetchData() {
+      setLoading(true);
+      setError('');
+      try {
+        const [empRes, salRes] = await Promise.all([
+          fetch('/api/employees'),
+          fetch(`/api/salary?month=${month}`),
+        ]);
+        if (!empRes.ok) throw new Error('Failed to fetch employees');
+        if (!salRes.ok) throw new Error('Failed to fetch salaries');
+        const [empData, salData] = await Promise.all([empRes.json(), salRes.json()]);
+        setEmployees(empData);
+        setSalaries(salData);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to load data');
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
   }, [month]);
 
   const active = employees.filter(e => e.status === 'ACTIVE').length;
@@ -26,6 +44,9 @@ export default function DashboardPage() {
   for (const e of employees) {
     deptMap[e.department] = (deptMap[e.department] ?? 0) + 1;
   }
+
+  if (loading) return <div className="flex items-center justify-center h-64 text-slate-500 text-sm">Loading...</div>;
+  if (error) return <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-lg">{error}</div>;
 
   return (
     <div className="space-y-6">

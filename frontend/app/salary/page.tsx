@@ -1,21 +1,35 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { getEmployees, getSalariesForMonth, calculateAndSaveSalary, getSalaryForMonth } from '@/lib/store';
 import { Employee, Salary } from '@/lib/types';
 import { formatCurrency, getStatusColor, getCurrentMonth } from '@/lib/utils';
 import Modal from '@/components/Modal';
-import { FileText, Calculator } from 'lucide-react';
+import { FileText, Calculator, Mail, Download } from 'lucide-react';
 
 export default function SalaryPage() {
   const [month, setMonth] = useState(getCurrentMonth());
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [salaries, setSalaries] = useState<Salary[]>([]);
+  const [loading, setLoading] = useState(true);
   const [viewSalary, setViewSalary] = useState<{ emp: Employee; sal: Salary } | null>(null);
   const [msg, setMsg] = useState('');
 
-  function reload() {
-    setEmployees(getEmployees().filter(e => e.status === 'ACTIVE'));
-    setSalaries(getSalariesForMonth(month));
+  async function reload() {
+    setLoading(true);
+    try {
+      const [empRes, salRes] = await Promise.all([
+        fetch('/api/employees'),
+        fetch(`/api/salary?month=${month}`),
+      ]);
+      if (!empRes.ok) throw new Error('Failed to fetch employees');
+      if (!salRes.ok) throw new Error('Failed to fetch salaries');
+      const [empData, salData] = await Promise.all([empRes.json(), salRes.json()]);
+      setEmployees(empData.filter((e: Employee) => e.status === 'ACTIVE'));
+      setSalaries(salData);
+    } catch (err: unknown) {
+      setMsg(err instanceof Error ? err.message : 'Error loading data');
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => { reload(); }, [month]);
@@ -24,10 +38,18 @@ export default function SalaryPage() {
     return salaries.find(s => s.employeeId === empId);
   }
 
-  function handleCalculate(emp: Employee) {
+  async function handleCalculate(emp: Employee) {
     try {
-      calculateAndSaveSalary(emp, month);
-      reload();
+      const res = await fetch('/api/salary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId: emp.id, month }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message ?? errData.error ?? 'Error calculating salary');
+      }
+      await reload();
       setMsg(`Salary calculated for ${emp.firstName} ${emp.lastName}`);
       setTimeout(() => setMsg(''), 2500);
     } catch (err: unknown) {
@@ -36,9 +58,29 @@ export default function SalaryPage() {
   }
 
   function handleView(emp: Employee) {
-    const sal = getSalaryForMonth(emp.id, month);
+    const sal = salaryFor(emp.id);
     if (sal) setViewSalary({ emp, sal });
   }
+
+  async function handleSendPayslip(sal: Salary, emp: Employee) {
+    try {
+      const res = await fetch('/api/salary/send-payslip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ salaryId: sal.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Failed to send payslip');
+      setMsg(data.demo
+        ? `[Demo] Payslip for ${emp.firstName} ${emp.lastName} logged to console`
+        : `Payslip sent to ${data.to}`);
+      setTimeout(() => setMsg(''), 3000);
+    } catch (err: unknown) {
+      setMsg(err instanceof Error ? err.message : 'Error sending payslip');
+    }
+  }
+
+  if (loading) return <div className="flex items-center justify-center h-64 text-slate-500 text-sm">Loading...</div>;
 
   return (
     <div className="space-y-5">
@@ -47,8 +89,15 @@ export default function SalaryPage() {
           <h2 className="text-xl font-bold text-slate-800">Salary</h2>
           <p className="text-sm text-slate-500">Calculate and view employee salaries</p>
         </div>
-        <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-          className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        <div className="flex items-center gap-2">
+          <input type="month" value={month} onChange={e => setMonth(e.target.value)}
+            className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <button
+            onClick={() => { window.location.href = `/api/salary/bank-transfer?month=${month}`; }}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
+            <Download className="w-3.5 h-3.5" /> Export Bank File
+          </button>
+        </div>
       </div>
 
       {msg && <div className="bg-blue-50 text-blue-700 text-sm px-4 py-2 rounded-lg">{msg}</div>}
@@ -99,6 +148,12 @@ export default function SalaryPage() {
                         <button onClick={() => handleView(emp)}
                           className="flex items-center gap-1 px-2 py-1 text-xs bg-slate-50 text-slate-600 rounded-lg hover:bg-slate-100">
                           <FileText className="w-3 h-3" /> Payslip
+                        </button>
+                      )}
+                      {sal && (
+                        <button onClick={() => handleSendPayslip(sal, emp)}
+                          className="flex items-center gap-1 px-2 py-1 text-xs bg-green-50 text-green-600 rounded-lg hover:bg-green-100">
+                          <Mail className="w-3 h-3" /> Send
                         </button>
                       )}
                     </div>

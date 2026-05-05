@@ -2,29 +2,43 @@
 import { useEffect, useState } from 'react';
 import { Plus, Search, Pencil, Trash2 } from 'lucide-react';
 import Modal from '@/components/Modal';
-import { getEmployees, saveEmployee, updateEmployee, deleteEmployee } from '@/lib/store';
 import { Employee } from '@/lib/types';
 import { formatCurrency, getStatusColor } from '@/lib/utils';
 
 const emptyForm = {
   firstName: '', lastName: '', email: '', phone: '',
   department: '', position: '', baseSalary: '', bankAccount: '',
-  dateOfJoining: '', status: 'ACTIVE' as const,
+  ifscCode: 'SBIN0000001', dateOfJoining: '', status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE',
 };
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [dept, setDept] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [pageError, setPageError] = useState('');
 
-  function reload() { setEmployees(getEmployees()); }
+  async function reload() {
+    try {
+      const res = await fetch('/api/employees');
+      if (!res.ok) throw new Error('Failed to fetch employees');
+      const data = await res.json();
+      setEmployees(data);
+    } catch (err: unknown) {
+      setPageError(err instanceof Error ? err.message : 'Error loading employees');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => { reload(); }, []);
 
-  const depts = [...new Set(employees.map(e => e.department))];
+  const depts = Array.from(new Set(employees.map(e => e.department)));
 
   const filtered = employees.filter(e => {
     const q = search.toLowerCase();
@@ -38,12 +52,13 @@ export default function EmployeesPage() {
     setForm({
       firstName: emp.firstName, lastName: emp.lastName, email: emp.email, phone: emp.phone,
       department: emp.department, position: emp.position, baseSalary: String(emp.baseSalary),
-      bankAccount: emp.bankAccount, dateOfJoining: emp.dateOfJoining, status: emp.status,
+      bankAccount: emp.bankAccount, ifscCode: emp.ifscCode ?? 'SBIN0000001',
+      dateOfJoining: emp.dateOfJoining, status: emp.status,
     });
     setEditing(emp); setError(''); setShowAdd(true);
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     if (!form.firstName || !form.email || !form.baseSalary) {
@@ -52,23 +67,48 @@ export default function EmployeesPage() {
     }
     const salary = parseFloat(form.baseSalary);
     if (isNaN(salary) || salary <= 0) { setError('Invalid salary.'); return; }
+    setSubmitting(true);
     try {
       const data = { ...form, baseSalary: salary };
+      let res: Response;
       if (editing) {
-        updateEmployee({ ...editing, ...data });
+        res = await fetch(`/api/employees/${editing.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...editing, ...data }),
+        });
       } else {
-        saveEmployee(data);
+        res = await fetch('/api/employees', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
       }
-      reload(); setShowAdd(false);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message ?? errData.error ?? 'Error saving employee');
+      }
+      await reload();
+      setShowAdd(false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error saving employee');
+    } finally {
+      setSubmitting(false);
     }
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     if (!confirm('Deactivate this employee?')) return;
-    deleteEmployee(id); reload();
+    try {
+      const res = await fetch(`/api/employees/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to deactivate employee');
+      await reload();
+    } catch (err: unknown) {
+      setPageError(err instanceof Error ? err.message : 'Error deleting employee');
+    }
   }
+
+  if (loading) return <div className="flex items-center justify-center h-64 text-slate-500 text-sm">Loading...</div>;
 
   return (
     <div className="space-y-5">
@@ -82,6 +122,8 @@ export default function EmployeesPage() {
           <Plus className="w-4 h-4" /> Add Employee
         </button>
       </div>
+
+      {pageError && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{pageError}</p>}
 
       <div className="flex gap-3">
         <div className="relative flex-1">
@@ -167,6 +209,7 @@ export default function EmployeesPage() {
             ['Email', 'email', 'email'], ['Phone', 'phone', 'tel'],
             ['Department', 'department', 'text'], ['Position', 'position', 'text'],
             ['Base Salary', 'baseSalary', 'number'], ['Bank Account', 'bankAccount', 'text'],
+            ['IFSC Code', 'ifscCode', 'text'],
             ['Date of Joining', 'dateOfJoining', 'date'],
           ] as [string, keyof typeof form, string][]).map(([label, key, type]) => (
             <div key={key}>
@@ -180,9 +223,9 @@ export default function EmployeesPage() {
               className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">
               Cancel
             </button>
-            <button type="submit"
-              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
-              {editing ? 'Save Changes' : 'Add Employee'}
+            <button type="submit" disabled={submitting}
+              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50">
+              {submitting ? 'Saving...' : editing ? 'Save Changes' : 'Add Employee'}
             </button>
           </div>
         </form>

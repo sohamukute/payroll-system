@@ -1,6 +1,5 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { getEmployees, getSalariesForMonth, getAttendanceForMonth } from '@/lib/store';
 import { Salary, Employee } from '@/lib/types';
 import { formatCurrency, getCurrentMonth } from '@/lib/utils';
 import {
@@ -14,10 +13,30 @@ export default function ReportsPage() {
   const [month, setMonth] = useState(getCurrentMonth());
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [salaries, setSalaries] = useState<Salary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    setEmployees(getEmployees());
-    setSalaries(getSalariesForMonth(month));
+    async function fetchData() {
+      setLoading(true);
+      setError('');
+      try {
+        const [empRes, salRes] = await Promise.all([
+          fetch('/api/employees'),
+          fetch(`/api/salary?month=${month}`),
+        ]);
+        if (!empRes.ok) throw new Error('Failed to fetch employees');
+        if (!salRes.ok) throw new Error('Failed to fetch salaries');
+        const [empData, salData] = await Promise.all([empRes.json(), salRes.json()]);
+        setEmployees(empData);
+        setSalaries(salData);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to load data');
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
   }, [month]);
 
   const deptSalary: Record<string, number> = {};
@@ -40,14 +59,9 @@ export default function ReportsPage() {
   const totalDeductions = salaries.reduce((s, x) => s + x.totalDeductions, 0);
   const totalNet = salaries.reduce((s, x) => s + x.netSalary, 0);
   const totalPF = salaries.reduce((s, x) => s + x.providentFund, 0);
-  const totalTax = salaries.reduce((s, x) => s + x.incomeTax, 0);
 
-  const attStats = employees.slice(0, 5).map(emp => {
-    const att = getAttendanceForMonth(emp.id, month);
-    const present = att.filter(a => a.status === 'PRESENT').length;
-    const total = att.length;
-    return { name: emp.firstName, present, total, pct: total ? Math.round((present / total) * 100) : 0 };
-  });
+  if (loading) return <div className="flex items-center justify-center h-64 text-slate-500 text-sm">Loading...</div>;
+  if (error) return <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-lg">{error}</div>;
 
   return (
     <div className="space-y-6">
@@ -110,36 +124,34 @@ export default function ReportsPage() {
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-100">
-          <h3 className="text-sm font-semibold text-slate-800">Attendance Summary</h3>
+          <h3 className="text-sm font-semibold text-slate-800">Salary Summary by Employee</h3>
         </div>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50">
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Employee</th>
-              <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Present</th>
-              <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Total Days</th>
-              <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Attendance %</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Gross</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Deductions</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Net Pay</th>
             </tr>
           </thead>
           <tbody>
-            {attStats.length === 0 && (
-              <tr><td colSpan={4} className="text-center py-8 text-slate-400">No attendance data</td></tr>
+            {salaries.length === 0 && (
+              <tr><td colSpan={4} className="text-center py-8 text-slate-400">No salary data for this month</td></tr>
             )}
-            {attStats.map(a => (
-              <tr key={a.name} className="border-b border-slate-50">
-                <td className="px-4 py-3 font-medium text-slate-800">{a.name}</td>
-                <td className="px-4 py-3 text-center">{a.present}</td>
-                <td className="px-4 py-3 text-center">{a.total}</td>
-                <td className="px-4 py-3 text-center">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 bg-slate-100 rounded-full h-1.5">
-                      <div className="h-1.5 bg-green-500 rounded-full" style={{ width: `${a.pct}%` }} />
-                    </div>
-                    <span className="text-xs text-slate-600">{a.pct}%</span>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {salaries.map(sal => {
+              const emp = employees.find(e => e.id === sal.employeeId);
+              return (
+                <tr key={sal.id} className="border-b border-slate-50">
+                  <td className="px-4 py-3 font-medium text-slate-800">
+                    {emp ? `${emp.firstName} ${emp.lastName}` : sal.employeeId}
+                  </td>
+                  <td className="px-4 py-3 text-right text-slate-700">{formatCurrency(sal.totalEarnings)}</td>
+                  <td className="px-4 py-3 text-right text-red-600">{formatCurrency(sal.totalDeductions)}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatCurrency(sal.netSalary)}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
